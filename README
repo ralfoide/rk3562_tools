@@ -1,4 +1,5 @@
 This project is based on http://gitorious.org/rockchip-android/tools
+Forked from https://github.com/chuyukeji/rk2918_tools
 
 Development libraries and tools:
 开发环境要求（必须安装了它们，否则make的时候会失败）:
