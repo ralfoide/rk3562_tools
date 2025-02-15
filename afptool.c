@@ -61,14 +61,17 @@ int extract_file(FILE *fp, off_t ofst, size_t len, const char *path) {
 		printf("Can't open/create file: %s\n", path);
 		return -1;
 	}
+	printf("  Extract %s, offset %ld, len %ld\n", path, ofst, len);
 
 	fseeko(fp, ofst, SEEK_SET);
 	while (len)
 	{
 		size_t read_len = len < sizeof(buffer) ? len : sizeof(buffer);
 		read_len = fread(buffer, 1, read_len, fp);
-		if (!read_len)
+		if (!read_len) {
+			printf("    fread -> %ld\n", read_len);
 			break;
+		}
 		fwrite(buffer, read_len, 1, ofp);
 		len -= read_len;
 	}
@@ -117,14 +120,38 @@ int unpack_update(const char* srcfile, const char* dstdir) {
 	}
 	printf("OK\n");
 
+	printf("Header size:   : %08lx -> %ld\n", sizeof(header), sizeof(header));
+	printf("Header Len     : %08x -> %d\n", header.length, header.length);
+	printf("Header Model   : %s\n", header.model);
+	printf("Header ID      : %s\n", header.id);
+	printf("Header Manufact: %s\n", header.manufacturer);
+	printf("Header Unknown1: %08x -> %d\n", header.unknown1, header.unknown1);
+	printf("Header Version : %08x -> %d\n", header.version, header.version);
+	printf("Header NumParts: %d\n", header.num_parts);
+
 	printf("------- UNPACK -------\n");
 	if (header.num_parts) {
 		unsigned i;
 		char dir[PATH_MAX];
+		int num_parts = header.num_parts;
 
-		for (i = 0; i < header.num_parts; i++) {
+		if (num_parts == 16) {
+			num_parts = (sizeof(header) - ((char *)&header.parts[0] - (char *)&header)) / sizeof(struct update_part);
+		}
+		snprintf(dir, sizeof(dir), "%s/%s", dstdir, "header");
+		extract_file(fp, 0, sizeof(header), dir);
+		printf("  Tip: use 'hexdump -C %s' to view in hexa.\n", dir);
+
+		for (i = 0; i < num_parts; i++) {
 			struct update_part *part = &header.parts[i];
-			printf("%s\t0x%08X\t0x%08X\n", part->filename, part->pos,
+			if (*(part->filename) == 0 || *(part->name) == 0) {
+				printf("Part %2d : No entry\n", i);
+				break;
+			}
+			printf("Part %2d : File %s\tPos 0x%08X\tSize 0x%08X\n",
+					i,
+					part->filename,
+					part->pos,
 					part->size);
 
 			if (strcmp(part->filename, "SELF") == 0) {
@@ -132,7 +159,9 @@ int unpack_update(const char* srcfile, const char* dstdir) {
 				continue;
 			}
 
-			// parameter 多出文件头8个字节,文件尾4个字节
+			// parameter
+			// 多出文件头8个字节,文件尾4个字节
+			// "There are 8 extra bytes at the beginning of the file and 4 bytes at the end of the file."
 			if (memcmp(part->name, "parameter", 9) == 0) {
 				part->pos += 8;
 				part->size -= 12;
@@ -144,6 +173,8 @@ int unpack_update(const char* srcfile, const char* dstdir) {
 				continue;
 
 			if (part->pos + part->size > header.length) {
+				printf("  Part %2d Invalid pos+size %08x <= header.len %08x\n",
+					i, part->pos + part->size, header.length);
 				fprintf(stderr, "Invalid part: %s\n", part->name);
 				continue;
 			}

@@ -23,8 +23,12 @@ struct update_header {
 	unsigned int version;
 	unsigned int num_parts;
 
-	struct update_part parts[16];
-	unsigned char reserved[0x74];
+	/*
+		RK2919: num_parts = 16    , reserved len = 0x74. Header len 2048.
+		RK3562: num_parts = 20 (?), reserved len =   34. Header len 4096.
+	*/
+	struct update_part parts[35];	// 35 entries can fit in 4096 bytes header.
+	unsigned char reserved[34];
 };
 
 struct param_header {
