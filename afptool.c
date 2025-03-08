@@ -15,6 +15,9 @@
 
 #define UPDATE_MAGIC	"RKAF"
 
+#define NUM_PKG	 32	// was 16
+#define NUM_PART 32	// was 16, need at least 25 for A/B rk3562 image 
+
 int filestream_crc(FILE *fs, size_t stream_len)
 {
 	char buffer[1024];
@@ -219,10 +222,10 @@ typedef struct {
 	char manufacturer[0x38];
 
 	unsigned int num_package;
-	struct pack_part packages[16];
+	struct pack_part packages[NUM_PKG];
 
 	unsigned int num_partition;
-	struct partition partitions[16];
+	struct partition partitions[NUM_PART];
 } PackImage;
 
 static PackImage package_image;
@@ -263,6 +266,7 @@ int parse_partitions(char *str) {
 			else
 				p_part->name[i-1] = '\0';
 
+			printf("  Partition %d: %s\n", package_image.num_partition, p_part->name);
 			package_image.num_partition++;
 		}
 
@@ -285,20 +289,26 @@ int action_parse_key(char *key, char *value) {
 				0;
 		strncpy(package_image.machine_model, value,
 				sizeof(package_image.machine_model));
-		if (package_image.machine_model[sizeof(package_image.machine_model) - 1])
+		if (package_image.machine_model[sizeof(package_image.machine_model) - 1]) {
+			printf("\tUnknown machine model.\n");
 			return -1;
+		}
 	} else if (strcmp(key, "MACHINE_ID") == 0) {
 		package_image.machine_id[sizeof(package_image.machine_id) - 1] = 0;
 		strncpy(package_image.machine_id, value,
 				sizeof(package_image.machine_id));
-		if (package_image.machine_id[sizeof(package_image.machine_id) - 1])
+		if (package_image.machine_id[sizeof(package_image.machine_id) - 1]) {
+			printf("\tUnknown machine ID.\n");
 			return -1;
+		}
 	} else if (strcmp(key, "MANUFACTURER") == 0) {
 		package_image.manufacturer[sizeof(package_image.manufacturer) - 1] = 0;
 		strncpy(package_image.manufacturer, value,
 				sizeof(package_image.manufacturer));
-		if (package_image.manufacturer[sizeof(package_image.manufacturer) - 1])
+		if (package_image.manufacturer[sizeof(package_image.manufacturer) - 1]) {
+			printf("\tUnknown manufacturer.\n");
 			return -1;
+		}
 	} else if (strcmp(key, "CMDLINE") == 0) {
 		char *param, *token1 = NULL;
 		char *param_key, *param_value;
@@ -320,15 +330,18 @@ int action_parse_key(char *key, char *value) {
 
 			param = strtok_r(NULL, " ", &token1);
 		}
+	} else {
+		printf("\tIgnore key: %s\n", key);
 	}
 	return 0;
 }
 
 int parse_parameter(const char *fname) {
-	char line[512], *startp, *endp;
+	char line[2048], *startp, *endp;
 	char *key, *value;
 	FILE *fp;
 
+	printf("Parse parameters from %s\n", fname);
 	if ((fp = fopen(fname, "r")) == NULL) {
 		printf("Can't open file: %s\n", fname);
 		return -1;
@@ -337,8 +350,10 @@ int parse_parameter(const char *fname) {
 	while (fgets(line, sizeof(line), fp) != NULL) {
 		startp = line;
 		endp = line + strlen(line) - 1;
-		if (*endp != '\n' && *endp != '\r' && !feof(fp))
+		if (*endp != '\n' && *endp != '\r' && !feof(fp)) {
+			printf("  Ignore line not properly CR/LF terminated: %s\n", line);
 			break;
+		}
 
 		// trim line
 		while (isspace(*startp))
@@ -360,11 +375,12 @@ int parse_parameter(const char *fname) {
 		*value = '\0';
 		value++;
 
+		printf("  Parse key: %s\n", key);
 		action_parse_key(key, value);
 	}
 
 	if (!feof(fp)) {
-		printf("File read failed!\n");
+		printf("File read failed: not EOF!\n");
 		fclose(fp);
 		return -3;
 	}
@@ -421,6 +437,7 @@ void append_package(const char *name, const char *path)
 	struct partition *p_part;
 	struct pack_part *p_pack = &package_image.packages[package_image.num_package];
 
+	printf("  Package %d: %s\n", package_image.num_package, name);
 	strncpy(p_pack->name, name, sizeof(p_pack->name));
 	strncpy(p_pack->filename, path, sizeof(p_pack->filename));
 
@@ -443,6 +460,7 @@ int get_packages(const char *fname)
 	char *name, *path;
 	FILE *fp;
 
+	printf("Parse packages from %s\n", fname);
 	if ((fp = fopen(fname, "r")) == NULL) {
 		printf("Can't open file: %s\n", fname);
 		return -1;

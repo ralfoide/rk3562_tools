@@ -7,7 +7,8 @@
 #include "rkafp.h"
 #include "md5.h"
 
-unsigned int chiptype = 0x50;
+#define ROM_CHIP 0x33353632 		// old: 0x50
+#define ROM_VERS ROM_VERSION(0xC, 0, 0)
 
 unsigned int import_data(const char* infile, void *head, size_t head_len, FILE *fp)
 {
@@ -91,7 +92,8 @@ int pack_rom(const char *loader_filename, const char *image_filename, const char
 	struct update_header rkaf_header;
 	struct bootloader_header loader_header;
 
-	rom_header.chip = chiptype;
+	rom_header.version = ROM_VERS;
+	rom_header.chip = ROM_CHIP;
 	rom_header.code = 0x01030000;
 	nowtime = time(NULL);
 	localtime_r(&nowtime, &local_time);
@@ -114,7 +116,6 @@ int pack_rom(const char *loader_filename, const char *image_filename, const char
 	if (1 != fwrite(buffer, 0x66, 1, fp))
 		goto pack_fail;
 
-/*
 	printf("rom version: %x.%x.%x\n",
 		(rom_header.version >> 24) & 0xFF,
 		(rom_header.version >> 16) & 0xFF,
@@ -125,7 +126,7 @@ int pack_rom(const char *loader_filename, const char *image_filename, const char
 		rom_header.hour, rom_header.minute, rom_header.second);
 
 	printf("chip: %x\n", rom_header.chip);
-*/
+
 	fseek(fp, rom_header.loader_offset, SEEK_SET);
 	fprintf(stderr, "generate image...\n");
 	rom_header.loader_length = import_data(loader_filename, &loader_header, sizeof(loader_header), fp);

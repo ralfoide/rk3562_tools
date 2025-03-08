@@ -1,30 +1,168 @@
 This project is based on http://gitorious.org/rockchip-android/tools
 Forked from https://github.com/chuyukeji/rk2918_tools
 
-Development libraries and tools:
-开发环境要求（必须安装了它们，否则make的时候会失败）:
-git， gcc， 开发库libssl-dev（用于md5校验）
-apt-get install  git gcc libssl-dev # for md5
+In this version:
+- afptool.c can deal with the 4096 bytes header used on RK3562.
+- afptool.c has been updated to support more than 16 entries.
+- img_unpack.c extracts both the loader.img and the actual OS image.
+- img_pack.c updated to support more than 16 packages/partitions.
+
+
+## Building
 
 For MSYS2:
 $ pacman -S make
 $ pacman -S gcc
 $ pacman -S openssl-devel
+$ git clone git@github.com:ralfoide/rk3562_tools.git
+$ (cd rk3562_tools && make)
+
+For Linux:
+$ sudo apt install git gcc libssl-dev make
+$ git clone git@github.com:ralfoide/rk3562_tools.git
+$ (cd rk3562_tools && make)
 
 
-Get source code & build  获取源码并编译
-git clone git://github.com/jhonxie/rk2918_tools.git  
-cd rk2918_tools
-make
+## Example Usage for Rockchip tablet
 
-Several executable bins are built:
-编译的完成或者下载的工具包解压之后，将得到3个二进制程序：
-img_unpack  固件新格式转旧格式   
-img_maker	固件旧格式打包成新格式  
-afptool		旧格式固件打包解包工具  
-mkkrnlimg  pack kernel or ramdisk to add KRNL head and CRC checksum
 
-PS: the rkflash tool not implemented in this project, you can find it here: http://forum.xda-developers.com/showthread.php?t=1286305
+The structure of a ROM is as follows:
 
-In this version, afptool can deal with the 4096 bytes header used on RK3562.
+- Umidigi_g2_tab.img ==> a Rockchip "firmware image", use with img_unpack/img_pack.
+  - loader.img
+  - actual image ==> use with afptool -pack/-unpack.
+    - parameter.txt
+    - package-file
+    - N * images (A vs B).
+    - super.img ==> an Android "Super Partition Image" (*), use with lpunpack, lpmake.
+      - system_a.img ==> an ext4, resize then mount -o loop.
+
+(* see https://android.googlesource.com/platform/system/extras/+/refs/heads/main/partition_tools )
+
+
+### Step 1
+
+$ rk3562_tools/img_unpack UMIDIGI_G2_Tab_V1.0_20240225_20240225-0106.img loader.img img
+$ rk3562_tools/fptool -unpack img update
+
+
+### Step 2
+
+Other tools needed to use the update image:
+$ sudo apt install android-sdk-libsparse-utils clang zlib1g-dev
+$ git clone https://github.com/unix3dgforce/lpunpack.git
+$ git clone https://github.com/LonelyFool/lpunpack_and_lpmake
+$ (cd lpunpack_and_lpmake && ./make.sh)
+
+
+### Step 3
+
+$ cd update
+$ python3 ../lpunpack/lpunpack.py --info super.ext4.img sup | tee _super_layout.txt
+
+sup/system_a.img is what most people want. However if you mount it, it has zero bytes left
+and thus needs to be expanded to be useful first.
+
+$ cd sup
+$ fallocate -l 2G system_a.img
+$ /sbin/e2fsck -f system_a.img
+$ /sbin/resize2fs system_a.img 2G
+
+$ mkdir system
+$ sudo mount -t ext4 -o loop system_a.img system
+
+Once modified:
+$ sudo umount -v system
+$ /sbin/e2fsck -f system_a.img
+$ /sbin/resize2fs -M system_a.img    # -M minimizes the filesystem size
+
+
+### Step 4
+
+Use lpmake to rebuild the new super.img.
+From step 3, _super_layout.txt contains metadata needed for lpmake, for example:
+- Metadata max size: 65536 bytes
+- Metadata slot count: 3i
+- Partition super size: 4294967296
+- Groups are rockchip_dynamic_partitions_a and rockchip_dynamic_partitions_b
+- Groups size: 4290772992
+
+If you want to use the real sum of the img files for the group size:
+$ echo $(( 0 $(stat -c '+%s' sup/*img) ))
+
+Adjust commands below if you do not have A/B images.
+
+Get the partition list using:
+$ stat -c '--partition %n:readonly:%s:rockchip_dynamic_partitions_a --image %n=%n \' sup/*_a.img | sed -s 's/ sup\// /g; s/\.img:/:/; s/\.img=/=/'
+$ stat -c '--partition %n:readonly:%s:rockchip_dynamic_partitions_b \' sup/*_b.img | sed -s 's/ sup\// /g; s/\.img:/:/'
+Optionally, reorder entries to match original (order system > vendor > odm > product).
+
+All this can be recombined to create the needed lpmake command (example only, YMMV):
+$ ../lpunpack_and_lpmake/bin/lpmake --metadata-size 65536 \
+--super-name super --metadata-slots 3 \
+--device super:4294967296 \
+--group rockchip_dynamic_partitions_a:4290772992 \
+--group rockchip_dynamic_partitions_b:4290772992 \
+--partition system_a:readonly:1047355392:rockchip_dynamic_partitions_a --image system_a=sup/system_a.img \
+--partition system_b:readonly:0:rockchip_dynamic_partitions_b \
+--partition system_dlkm_a:readonly:348160:rockchip_dynamic_partitions_a --image system_dlkm_a=sup/system_dlkm_a.img \
+--partition system_dlkm_b:readonly:0:rockchip_dynamic_partitions_b \
+--partition system_ext_a:readonly:263692288:rockchip_dynamic_partitions_a --image system_ext_a=sup/system_ext_a.img \
+--partition system_ext_b:readonly:0:rockchip_dynamic_partitions_b \
+--partition vendor_a:readonly:252325888:rockchip_dynamic_partitions_a --image vendor_a=sup/vendor_a.img \
+--partition vendor_b:readonly:0:rockchip_dynamic_partitions_b \
+--partition vendor_dlkm_a:readonly:33341440:rockchip_dynamic_partitions_a --image vendor_dlkm_a=sup/vendor_dlkm_a.img \
+--partition vendor_dlkm_b:readonly:0:rockchip_dynamic_partitions_b \
+--partition odm_a:readonly:770048:rockchip_dynamic_partitions_a --image odm_a=sup/odm_a.img \
+--partition odm_b:readonly:0:rockchip_dynamic_partitions_b \
+--partition odm_dlkm_a:readonly:348160:rockchip_dynamic_partitions_a --image odm_dlkm_a=sup/odm_dlkm_a.img \
+--partition odm_dlkm_b:readonly:0:rockchip_dynamic_partitions_b \
+--partition product_a:readonly:2367422464:rockchip_dynamic_partitions_a --image product_a=sup/product_a.img \
+--partition product_b:readonly:0:rockchip_dynamic_partitions_b \
+--sparse --output ./super.new.img
+
+
+### Step 5
+
+$ python3 ../lpunpack/lpunpack.py --info super.new.img supNew | tee _super_new.txt
+$ vimdiff _super_new.txt _super_layout.txt
+
+
+### Step 6
+
+Verify/update the super partition size in parameter.txt as needed:
+$ vim update/parameter.txt
+	CMDLINE=...0x00800000@0x0021bc00(super)...
+where $(( 0x00800000 * 512 )) ⇒ 4294967296 ⇒ 4 GB
+
+$ mv -v super.img super.old.img && mv -v super.new.img super.img
+
+afptool expects a "parameter" file instead of "parameter.txt".
+Check if package-file expects all img files in an Image sub-folder:
+$ mkdir Image
+$ for i in *.bin *.img parameter.txt ; do mv -v $i Image/ ; done
+$ ln -sv Image/parameter.txt parameter
+$../rk3562_tools/afptool -pack . ../update-new.img
+
+
+### Step 7
+
+$ rk3562_tools/img_maker loader0.img update-new.img UMIDIGI_G2_NEW.img
+
+
+~~
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

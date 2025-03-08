@@ -11,6 +11,7 @@ int export_data(const char *filename, unsigned int offset, unsigned int length, 
 	FILE *out_fp = NULL;
 	unsigned char buffer[1024];
 
+	printf("Write %s from offset %d, len %d\n", filename, offset, length);
 	out_fp = fopen(filename, "wb");
 	if (!out_fp)
 	{
@@ -72,7 +73,7 @@ int check_md5sum(FILE *fp, size_t length)
 	return -1;
 }
 
-int unpack_rom(const char* filepath, const char* dstfile)
+int unpack_rom(const char* filepath, const char* loader_dstfile, const char* img_dstfile)
 {
 	struct _rkfw_header rom_header;
 
@@ -114,8 +115,8 @@ int unpack_rom(const char* filepath, const char* dstfile)
 	}
 	printf("OK\n");
 
-	//export_data(loader_filename, rom_header.loader_offset, rom_header.loader_length, fp);
-	export_data(dstfile, rom_header.image_offset, rom_header.image_length, fp);
+	export_data(loader_dstfile, rom_header.loader_offset, rom_header.loader_length, fp);
+	export_data(img_dstfile, rom_header.image_offset, rom_header.image_length, fp);
 
 	fclose(fp);
 	return 0;
@@ -127,13 +128,13 @@ unpack_fail:
 
 int main(int argc, char **argv)
 {
-	if (argc != 3)
+	if (argc != 4)
 	{
-		fprintf(stderr, "usage: %s <source> <destination>\n", argv[0]);
+		fprintf(stderr, "usage: %s <source> <loader_dest.img> <destination.img>\n", argv[0]);
 		return 1;
 	}
 	
-	unpack_rom(argv[1], argv[2]);
+	unpack_rom(argv[1], argv[2], argv[3]);
 
 	return 0;
 }
