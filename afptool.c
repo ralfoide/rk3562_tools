@@ -124,13 +124,13 @@ int unpack_update(const char* srcfile, const char* dstdir) {
 	printf("OK\n");
 
 	printf("Header size:   : %08lx -> %ld\n", sizeof(header), sizeof(header));
-	printf("Header Len     : %08x -> %d\n", header.length, header.length);
+	printf("Header Len     : %08x -> %u\n", header.length, header.length);
 	printf("Header Model   : %s\n", header.model);
 	printf("Header ID      : %s\n", header.id);
 	printf("Header Manufact: %s\n", header.manufacturer);
-	printf("Header Unknown1: %08x -> %d\n", header.unknown1, header.unknown1);
-	printf("Header Version : %08x -> %d\n", header.version, header.version);
-	printf("Header NumParts: %d\n", header.num_parts);
+	printf("Header Unknown1: %08x -> %u\n", header.unknown1, header.unknown1);
+	printf("Header Version : %08x -> %u\n", header.version, header.version);
+	printf("Header NumParts: %u\n", header.num_parts);
 
 	printf("------- UNPACK -------\n");
 	if (header.num_parts) {
@@ -282,15 +282,23 @@ int parse_partitions(char *str) {
 int action_parse_key(char *key, char *value) {
 	if (strcmp(key, "FIRMWARE_VER") == 0) {
 		unsigned int a, b, c;
-		sscanf(value, "%d.%d.%d", &a, &b, &c);
+		if (sscanf(value, "%d.%d.%d", &a, &b, &c) != 3) {
+			printf("    Invalid %s. Expected 'number.number.number', got '%s'.\n", key, value);
+			return -1;
+		}
 		package_image.version = (a << 24) + (b << 16) + c;
+		printf("  Firmware ROM version: %x.%x.%x\n",
+			(package_image.version >> 24) & 0xFF,
+			(package_image.version >> 16) & 0xFF,
+			(package_image.version) & 0xFFFF);
+
 	} else if (strcmp(key, "MACHINE_MODEL") == 0) {
 		package_image.machine_model[sizeof(package_image.machine_model) - 1] =
 				0;
 		strncpy(package_image.machine_model, value,
 				sizeof(package_image.machine_model));
 		if (package_image.machine_model[sizeof(package_image.machine_model) - 1]) {
-			printf("\tUnknown machine model.\n");
+			printf("    Unknown machine model.\n");
 			return -1;
 		}
 	} else if (strcmp(key, "MACHINE_ID") == 0) {
@@ -298,7 +306,7 @@ int action_parse_key(char *key, char *value) {
 		strncpy(package_image.machine_id, value,
 				sizeof(package_image.machine_id));
 		if (package_image.machine_id[sizeof(package_image.machine_id) - 1]) {
-			printf("\tUnknown machine ID.\n");
+			printf("    Unknown machine ID.\n");
 			return -1;
 		}
 	} else if (strcmp(key, "MANUFACTURER") == 0) {
@@ -306,7 +314,7 @@ int action_parse_key(char *key, char *value) {
 		strncpy(package_image.manufacturer, value,
 				sizeof(package_image.manufacturer));
 		if (package_image.manufacturer[sizeof(package_image.manufacturer) - 1]) {
-			printf("\tUnknown manufacturer.\n");
+			printf("    Unknown manufacturer.\n");
 			return -1;
 		}
 	} else if (strcmp(key, "CMDLINE") == 0) {
@@ -331,7 +339,7 @@ int action_parse_key(char *key, char *value) {
 			param = strtok_r(NULL, " ", &token1);
 		}
 	} else {
-		printf("\tIgnore key: %s\n", key);
+		printf("    Ignore key: %s\n", key);
 	}
 	return 0;
 }
@@ -376,7 +384,9 @@ int parse_parameter(const char *fname) {
 		value++;
 
 		printf("  Parse key: %s\n", key);
-		action_parse_key(key, value);
+		if (action_parse_key(key, value)) {
+			return -1;
+		}
 	}
 
 	if (!feof(fp)) {

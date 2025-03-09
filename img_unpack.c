@@ -11,7 +11,7 @@ int export_data(const char *filename, unsigned int offset, unsigned int length, 
 	FILE *out_fp = NULL;
 	unsigned char buffer[1024];
 
-	printf("Write %s from offset %d, len %d\n", filename, offset, length);
+	printf("Write %s from offset %u, len %u\n", filename, offset, length);
 	out_fp = fopen(filename, "wb");
 	if (!out_fp)
 	{
@@ -95,16 +95,16 @@ int unpack_rom(const char* filepath, const char* loader_dstfile, const char* img
 		goto unpack_fail;
 	}
 
-	printf("rom version: %x.%x.%x\n",
+	printf("ROM version: %x.%x.%x\n",
 		(rom_header.version >> 24) & 0xFF,
 		(rom_header.version >> 16) & 0xFF,
 		(rom_header.version) & 0xFFFF);
 
-	printf("build time: %d-%02d-%02d %02d:%02d:%02d\n", 
+	printf("Build time: %d-%02d-%02d %02d:%02d:%02d\n", 
 		rom_header.year, rom_header.month, rom_header.day,
 		rom_header.hour, rom_header.minute, rom_header.second);
 
-	printf("chip: %x\n", rom_header.chip);
+	printf("Chip: %x\n", rom_header.chip);
 
 	printf("checking md5sum....");
 	fflush(stdout);

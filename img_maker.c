@@ -8,7 +8,6 @@
 #include "md5.h"
 
 #define ROM_CHIP 0x33353632 		// old: 0x50
-#define ROM_VERS ROM_VERSION(0xC, 0, 0)
 
 unsigned int import_data(const char* infile, void *head, size_t head_len, FILE *fp)
 {
@@ -86,15 +85,15 @@ int pack_rom(const char *loader_filename, const char *image_filename, const char
 	struct _rkfw_header rom_header = {
 		.head_code = "RKFW",
 		.head_len = 0x66,
+		.code = 0x01030000,
+		.chip = ROM_CHIP,
 		.loader_offset = 0x66
+		// .version is set below from rkaf_header.version
 	};
 	
 	struct update_header rkaf_header;
 	struct bootloader_header loader_header;
 
-	rom_header.version = ROM_VERS;
-	rom_header.chip = ROM_CHIP;
-	rom_header.code = 0x01030000;
 	nowtime = time(NULL);
 	localtime_r(&nowtime, &local_time);
 
@@ -104,6 +103,12 @@ int pack_rom(const char *loader_filename, const char *image_filename, const char
 	rom_header.hour = local_time.tm_hour;
 	rom_header.minute = local_time.tm_min;
 	rom_header.second = local_time.tm_sec;
+
+	printf("Build time: %d-%02d-%02d %02d:%02d:%02d\n", 
+		rom_header.year, rom_header.month, rom_header.day,
+		rom_header.hour, rom_header.minute, rom_header.second);
+
+	printf("Chip: %x\n", rom_header.chip);
 
 	FILE *fp = fopen(outfile, "wb+");
 	if (!fp)
@@ -115,17 +120,6 @@ int pack_rom(const char *loader_filename, const char *image_filename, const char
 	unsigned char buffer[0x66];
 	if (1 != fwrite(buffer, 0x66, 1, fp))
 		goto pack_fail;
-
-	printf("rom version: %x.%x.%x\n",
-		(rom_header.version >> 24) & 0xFF,
-		(rom_header.version >> 16) & 0xFF,
-		(rom_header.version) & 0xFFFF);
-
-	printf("build time: %d-%02d-%02d %02d:%02d:%02d\n", 
-		rom_header.year, rom_header.month, rom_header.day,
-		rom_header.hour, rom_header.minute, rom_header.second);
-
-	printf("chip: %x\n", rom_header.chip);
 
 	fseek(fp, rom_header.loader_offset, SEEK_SET);
 	fprintf(stderr, "generate image...\n");
@@ -150,6 +144,11 @@ int pack_rom(const char *loader_filename, const char *image_filename, const char
 	
 	rom_header.system_fstype = 0;
 	
+	printf("ROM version: %x.%x.%x\n",
+		(rom_header.version >> 24) & 0xFF,
+		(rom_header.version >> 16) & 0xFF,
+		(rom_header.version) & 0xFFFF);
+
 	for (i = 0; i < rkaf_header.num_parts; ++i)
 	{
 		if (strcmp(rkaf_header.parts[i].name, "backup") == 0)
